@@ -1,0 +1,25 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# TS/Vite build artifacts (tsc -b 생성물)
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Env (never commit OAuth client id / secrets)
+.env
+.env.local
+.env.*.local

@@ -1,0 +1,137 @@
+import type { DataSource, NoteFile } from './types'
+import { ensureToken, hasValidToken, requestToken } from './googleAuth'
+import {
+  FOLDER_MIME,
+  getFileText,
+  listChildren,
+  resolveFolderByName,
+  type DriveItem,
+} from './driveApi'
+import { typeForFolder } from './classify'
+import { formatRelative, stripMdExt } from './format'
+import { buildNoteFromMarkdown, resolveTargetIn } from '../markdown/parse'
+
+/** 폴더 트리 BFS 시 폭주 방지 한계. */
+const MAX_FOLDERS = 500
+const MAX_DEPTH = 6
+
+/**
+ * Google Drive 기반 DataSource.
+ * 볼트 루트(env VITE_VAULT_FOLDER_ID / NAME, 없으면 My Drive 루트)에서
+ * .md 파일을 BFS로 수집해 NoteFile[]로 변환한다.
+ * 마크다운 파싱(blocks/links/tags)은 Phase 2~3에서 채운다.
+ */
+export class DriveSource implements DataSource {
+  private files: NoteFile[] = []
+
+  async connect(): Promise<void> {
+    await requestToken(true)
+  }
+
+  isConnected(): boolean {
+    return hasValidToken()
+  }
+
+  async list(): Promise<NoteFile[]> {
+    if (this.files.length === 0) return this.refresh()
+    return this.files
+  }
+
+  async refresh(): Promise<NoteFile[]> {
+    const token = await ensureToken()
+    this.files = await this.buildVault(token)
+    return this.files
+  }
+
+  async read(id: string): Promise<NoteFile> {
+    const token = await ensureToken()
+    const md = await getFileText(token, id)
+    const idx = this.files.findIndex((f) => f.id === id)
+    const base: NoteFile =
+      idx >= 0
+        ? this.files[idx]
+        : {
+            id,
+            folder: '루트',
+            type: '기록',
+            title: id,
+            updatedAt: '',
+            tags: [],
+            links: [],
+            summary: '',
+            blocks: [],
+          }
+    const note = buildNoteFromMarkdown(base, md, (t) => resolveTargetIn(this.files, t, base.id))
+    if (idx >= 0) this.files[idx] = note
+    return note
+  }
+
+  async save(id: string, markdown: string): Promise<void> {
+    const token = await ensureToken()
+    const res = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'text/markdown' },
+        body: markdown,
+      },
+    )
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`Drive 저장 ${res.status}: ${body.slice(0, 200)}`)
+    }
+    const idx = this.files.findIndex((f) => f.id === id)
+    if (idx >= 0) this.files[idx] = { ...this.files[idx], markdown }
+  }
+
+  /** 볼트 루트를 결정. */
+  private async resolveRoot(token: string): Promise<string> {
+    const envId = import.meta.env.VITE_VAULT_FOLDER_ID
+    if (envId) return envId
+    const envName = import.meta.env.VITE_VAULT_FOLDER_NAME
+    if (envName) {
+      const id = await resolveFolderByName(token, envName)
+      if (id) return id
+    }
+    return 'root'
+  }
+
+  /** 루트부터 BFS로 하위 폴더를 돌며 .md 파일을 수집. */
+  private async buildVault(token: string): Promise<NoteFile[]> {
+    const rootId = await this.resolveRoot(token)
+    const mdItems: { item: DriveItem; parentName: string }[] = []
+    const queue: { id: string; name: string; depth: number }[] = [
+      { id: rootId, name: '루트', depth: 0 },
+    ]
+    let folderCount = 0
+
+    while (queue.length > 0 && folderCount < MAX_FOLDERS) {
+      const { id, name, depth } = queue.shift()!
+      folderCount++
+      const children = await listChildren(token, id)
+      for (const c of children) {
+        if (c.mimeType === FOLDER_MIME) {
+          if (depth < MAX_DEPTH) queue.push({ id: c.id, name: c.name, depth: depth + 1 })
+        } else if (c.name.toLowerCase().endsWith('.md')) {
+          mdItems.push({ item: c, parentName: name })
+        }
+      }
+    }
+
+    return mdItems.map(({ item, parentName }) => this.toNoteFile(item, parentName))
+  }
+
+  private toNoteFile(item: DriveItem, parentName: string): NoteFile {
+    return {
+      id: item.id,
+      folder: parentName,
+      type: typeForFolder(parentName),
+      title: stripMdExt(item.name),
+      updatedAt: formatRelative(item.modifiedTime),
+      tags: [],
+      links: [],
+      summary: '',
+      blocks: [],
+    }
+  }
+}
