@@ -3,6 +3,25 @@ import type { NoteFile, SourceKind } from '../data/types'
 
 export type ViewKey = 'dashboard' | 'graph' | 'doc' | 'mindmap' | 'diagram'
 
+const COLLAPSE_KEY = 'notelens.collapsedFolders'
+
+function loadCollapsed(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(COLLAPSE_KEY)
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveCollapsed(collapsed: Record<string, boolean>): void {
+  try {
+    localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed))
+  } catch {
+    /* 저장 실패는 무시 */
+  }
+}
+
 export interface AppState {
   // ----- 뷰 상태 (README §7) -----
   view: ViewKey
@@ -24,6 +43,8 @@ export interface AppState {
   linksLoading: boolean
   /** 마지막 오류 메시지(연결/로드 실패 표시용). */
   error: string | null
+  /** 접힌 폴더명 맵(true=접힘). 부재=펼침. localStorage 영속. */
+  collapsed: Record<string, boolean>
 
   // ----- 액션 -----
   setView: (view: ViewKey) => void
@@ -37,6 +58,8 @@ export interface AppState {
   setFiles: (files: NoteFile[]) => void
   upsertFile: (file: NoteFile) => void
   setError: (error: string | null) => void
+  toggleFolder: (name: string) => void
+  removeFile: (id: string) => void
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -52,6 +75,7 @@ export const useStore = create<AppState>((set) => ({
   files: [],
   linksLoading: false,
   error: null,
+  collapsed: loadCollapsed(),
 
   setView: (view) => set({ view }),
   open: (id) => set({ view: 'doc', selectedId: id, editing: false }),
@@ -76,6 +100,19 @@ export const useStore = create<AppState>((set) => ({
       return { files: next }
     }),
   setError: (error) => set({ error }),
+  toggleFolder: (name) =>
+    set((s) => {
+      const collapsed = { ...s.collapsed, [name]: !s.collapsed[name] }
+      if (!collapsed[name]) delete collapsed[name]
+      saveCollapsed(collapsed)
+      return { collapsed }
+    }),
+  removeFile: (id) =>
+    set((s) => {
+      const files = s.files.filter((f) => f.id !== id)
+      const selectedId = s.selectedId === id ? (files[0]?.id ?? null) : s.selectedId
+      return { files, selectedId, editing: false }
+    }),
 }))
 
 /** 현재 선택된 파일을 반환하는 셀렉터 훅. */
