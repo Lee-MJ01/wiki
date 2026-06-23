@@ -73,3 +73,51 @@ export async function getFileText(token: string, id: string): Promise<string> {
   }
   return res.text()
 }
+
+/** 마크다운 파일 생성(메타 + 본문 multipart 1회). 생성된 DriveItem 반환. */
+export async function createMarkdownFile(
+  token: string,
+  parentId: string,
+  name: string,
+  content: string,
+): Promise<DriveItem> {
+  const boundary = 'notelens-boundary-7e3f'
+  const metadata = { name, mimeType: 'text/markdown', parents: [parentId] }
+  const body =
+    `--${boundary}\r\n` +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    `${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\n` +
+    'Content-Type: text/markdown\r\n\r\n' +
+    `${content}\r\n` +
+    `--${boundary}--`
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,modifiedTime,parents',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    },
+  )
+  if (!res.ok) {
+    const t = await res.text().catch(() => '')
+    throw new Error(`Drive 생성 ${res.status}: ${t.slice(0, 200)}`)
+  }
+  return res.json() as Promise<DriveItem>
+}
+
+/** 파일을 휴지통으로 이동(복구 가능). */
+export async function trashFile(token: string, id: string): Promise<void> {
+  const res = await fetch(`${DRIVE}/files/${id}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trashed: true }),
+  })
+  if (!res.ok) {
+    const t = await res.text().catch(() => '')
+    throw new Error(`Drive 삭제 ${res.status}: ${t.slice(0, 200)}`)
+  }
+}
