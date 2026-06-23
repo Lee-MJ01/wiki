@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { color, colorForType, font, radius } from '../theme/tokens'
 import { useStore } from '../app/store'
 import { useHover } from '../components/useHover'
 import { ConnectButton } from '../components/ConnectButton'
 import { typeForFolder } from '../data/classify'
+import { createFile } from '../data/controller'
 import type { NoteFile } from '../data/types'
 
 /** 사이드바에 노출할 폴더 순서. 실제 폴더는 Drive 구조에서 채워진다(Phase 1). */
@@ -75,9 +77,48 @@ export function Sidebar() {
 
 function FolderGroup({ name, files }: { name: string; files: NoteFile[] }) {
   const chipColor = colorForType(typeForFolder(name))
+  const collapsed = useStore((s) => !!s.collapsed[name])
+  const toggleFolder = useStore((s) => s.toggleFolder)
+  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  function startCreate(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (collapsed) toggleFolder(name) // 생성 시 펼침
+    setCreating(true)
+    setDraft('')
+  }
+
+  function commit() {
+    void createFile(name, draft)
+    setCreating(false)
+    setDraft('')
+  }
+
   return (
     <div style={{ marginBottom: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px' }}>
+      <div
+        onClick={() => toggleFolder(name)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          padding: '6px 8px',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <span
+          style={{
+            width: 10,
+            fontSize: 9,
+            color: color.textFaint,
+            flex: 'none',
+            transition: 'transform .12s',
+          }}
+        >
+          {collapsed ? '▸' : '▾'}
+        </span>
         <div style={{ width: 8, height: 8, borderRadius: 2, background: chipColor, flex: 'none' }} />
         <span style={{ fontSize: 12.5, fontWeight: 600, color: color.textSecondary }}>{name}</span>
         <span
@@ -90,10 +131,61 @@ function FolderGroup({ name, files }: { name: string; files: NoteFile[] }) {
         >
           {files.length}
         </span>
+        <button
+          onClick={startCreate}
+          title="새 메모"
+          style={{
+            width: 18,
+            height: 18,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: 'none',
+            background: 'transparent',
+            color: color.textFaint,
+            cursor: 'pointer',
+            fontSize: 14,
+            lineHeight: 1,
+            padding: 0,
+          }}
+        >
+          +
+        </button>
       </div>
-      {files.map((f) => (
-        <FileItem key={f.id} file={f} />
-      ))}
+
+      {!collapsed && creating && (
+        <input
+          autoFocus
+          value={draft}
+          placeholder="새 메모 이름…"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit()
+            else if (e.key === 'Escape') {
+              setCreating(false)
+              setDraft('')
+            }
+          }}
+          onBlur={() => {
+            setCreating(false)
+            setDraft('')
+          }}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            margin: '2px 0 4px',
+            padding: '6px 10px',
+            fontSize: 13,
+            color: color.text,
+            background: color.focusBg,
+            border: `1px solid ${color.borderHover}`,
+            borderRadius: radius.chip,
+            outline: 'none',
+          }}
+        />
+      )}
+
+      {!collapsed && files.map((f) => <FileItem key={f.id} file={f} />)}
     </div>
   )
 }
