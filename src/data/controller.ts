@@ -187,3 +187,33 @@ export async function saveFile(id: string, markdown: string): Promise<void> {
     st.upsertFile(note)
   }
 }
+
+/** 새 파일 생성 후 선택 + 편집 모드로 연다. 빈 제목은 무시. */
+export async function createFile(folder: string, title: string): Promise<void> {
+  if (!active) return
+  const name = title.trim()
+  if (!name) return
+  const st = useStore.getState()
+  st.setError(null)
+  try {
+    const note = await active.create(folder, name)
+    st.upsertFile(note)
+    st.open(note.id)
+    if (!useStore.getState().editing) useStore.getState().toggleEdit()
+  } catch (e) {
+    st.setError(message(e))
+  }
+}
+
+/** 파일 삭제(확인은 UI에서 선처리). */
+export async function deleteFile(id: string): Promise<void> {
+  if (!active) return
+  const st = useStore.getState()
+  st.setError(null)
+  try {
+    await active.remove(id)
+    st.removeFile(id)
+  } catch (e) {
+    st.setError(message(e))
+  }
+}
