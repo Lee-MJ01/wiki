@@ -75,6 +75,10 @@ export interface DataSource {
   read(id: string): Promise<NoteFile>
   /** 편집 결과 저장(Phase 6). */
   save(id: string, markdown: string): Promise<void>
+  /** 새 .md 파일 생성. 본문은 "# title\n"으로 초기화. 생성된 NoteFile 반환. */
+  create(folder: string, title: string): Promise<NoteFile>
+  /** 파일 삭제(로컬=영구, Drive=휴지통). */
+  remove(id: string): Promise<void>
   /** 수동 새로고침 — Drive에서 목록을 다시 가져온다(Phase 1). */
   refresh(): Promise<NoteFile[]>
 }

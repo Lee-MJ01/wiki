@@ -5,6 +5,8 @@ import {
   getFileText,
   listChildren,
   resolveFolderByName,
+  createMarkdownFile,
+  trashFile,
   type DriveItem,
 } from './driveApi'
 import { typeForFolder } from './classify'
@@ -23,6 +25,10 @@ const MAX_DEPTH = 6
  */
 export class DriveSource implements DataSource {
   private files: NoteFile[] = []
+  /** 폴더명 → Drive 폴더 id(생성 대상). */
+  private folderIds = new Map<string, string>()
+  /** 볼트 루트 id. */
+  private rootId = 'root'
 
   async connect(): Promise<void> {
     await requestToken(true)
@@ -84,6 +90,21 @@ export class DriveSource implements DataSource {
     if (idx >= 0) this.files[idx] = { ...this.files[idx], markdown }
   }
 
+  async create(folder: string, title: string): Promise<NoteFile> {
+    const token = await ensureToken()
+    const parentId = this.folderIds.get(folder) ?? this.rootId
+    const item = await createMarkdownFile(token, parentId, `${title}.md`, `# ${title}\n`)
+    const note: NoteFile = { ...this.toNoteFile(item, folder), markdown: `# ${title}\n` }
+    this.files.push(note)
+    return note
+  }
+
+  async remove(id: string): Promise<void> {
+    const token = await ensureToken()
+    await trashFile(token, id)
+    this.files = this.files.filter((f) => f.id !== id)
+  }
+
   /** 볼트 루트를 결정. */
   private async resolveRoot(token: string): Promise<string> {
     const envId = import.meta.env.VITE_VAULT_FOLDER_ID
@@ -99,6 +120,9 @@ export class DriveSource implements DataSource {
   /** 루트부터 BFS로 하위 폴더를 돌며 .md 파일을 수집. */
   private async buildVault(token: string): Promise<NoteFile[]> {
     const rootId = await this.resolveRoot(token)
+    this.rootId = rootId
+    this.folderIds.clear()
+    this.folderIds.set('루트', rootId)
     const mdItems: { item: DriveItem; parentName: string }[] = []
     const queue: { id: string; name: string; depth: number }[] = [
       { id: rootId, name: '루트', depth: 0 },
@@ -111,6 +135,7 @@ export class DriveSource implements DataSource {
       const children = await listChildren(token, id)
       for (const c of children) {
         if (c.mimeType === FOLDER_MIME) {
+          if (!this.folderIds.has(c.name)) this.folderIds.set(c.name, c.id)
           if (depth < MAX_DEPTH) queue.push({ id: c.id, name: c.name, depth: depth + 1 })
         } else if (c.name.toLowerCase().endsWith('.md')) {
           mdItems.push({ item: c, parentName: name })

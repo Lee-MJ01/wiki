@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { color, radius } from '../theme/tokens'
-import { useStore, type ViewKey } from '../app/store'
+import { useStore, useSelectedFile, type ViewKey } from '../app/store'
 import { useHover } from '../components/useHover'
+import { deleteFile } from '../data/controller'
+import { ConfirmModal } from '../components/ConfirmModal'
 
 const TABS: [ViewKey, string][] = [
   ['dashboard', '대시보드'],
@@ -14,6 +17,9 @@ export function ViewTabs() {
   const view = useStore((s) => s.view)
   const editing = useStore((s) => s.editing)
   const toggleEdit = useStore((s) => s.toggleEdit)
+  const selectedId = useStore((s) => s.selectedId)
+  const selected = useSelectedFile()
+  const [confirming, setConfirming] = useState(false)
 
   return (
     <div
@@ -34,9 +40,21 @@ export function ViewTabs() {
 
       <div style={{ flex: 1 }} />
 
-      {view === 'doc' && (
-        <EditButton editing={editing} onClick={toggleEdit} />
-      )}
+      {view === 'doc' && <EditButton editing={editing} onClick={toggleEdit} />}
+      {selectedId != null && <DeleteButton onClick={() => setConfirming(true)} />}
+
+      <ConfirmModal
+        open={confirming}
+        danger
+        title="메모 삭제"
+        message={`"${selected?.title ?? ''}" 메모를 삭제할까요? 이 동작은 되돌릴 수 없습니다(로컬 폴더는 영구 삭제, Drive는 휴지통으로 이동).`}
+        confirmLabel="삭제"
+        onConfirm={() => {
+          if (selectedId != null) void deleteFile(selectedId)
+          setConfirming(false)
+        }}
+        onCancel={() => setConfirming(false)}
+      />
     </div>
   )
 }
@@ -79,6 +97,28 @@ function EditButton({ editing, onClick }: { editing: boolean; onClick: () => voi
       }}
     >
       {editing ? '완료' : '편집'}
+    </div>
+  )
+}
+
+function DeleteButton({ onClick }: { onClick: () => void }) {
+  const { hover, hoverProps } = useHover()
+  return (
+    <div
+      {...hoverProps}
+      onClick={onClick}
+      style={{
+        padding: '7px 14px',
+        borderRadius: radius.button,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: 'pointer',
+        color: hover ? '#fff' : '#b0574a',
+        background: hover ? '#b0574a' : 'transparent',
+        border: '1px solid #d8b3a8',
+      }}
+    >
+      삭제
     </div>
   )
 }
