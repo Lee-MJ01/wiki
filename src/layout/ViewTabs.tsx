@@ -40,7 +40,9 @@ export function ViewTabs() {
 
       <div style={{ flex: 1 }} />
 
-      {view === 'doc' && <EditButton editing={editing} onClick={toggleEdit} />}
+      {view === 'doc' && selected?.format === 'md' && (
+        <EditButton editing={editing} onClick={toggleEdit} />
+      )}
       {selectedId != null && <DeleteButton onClick={() => setConfirming(true)} />}
 
       <ConfirmModal
