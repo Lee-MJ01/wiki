@@ -4,6 +4,7 @@ import { useStore, useSelectedFile } from '../app/store'
 import { loadFileContent } from '../data/controller'
 import { DocBlocks } from './DocBlocks'
 import { EditPane } from './EditPane'
+import { NonMarkdownView } from './NonMarkdownView'
 
 /**
  * 문서 뷰(README §5.6) — 리치 렌더.
@@ -16,10 +17,10 @@ export function DocView() {
   const open = useStore((s) => s.open)
   const editing = useStore((s) => s.editing)
 
-  // 선택 문서의 본문을 지연 로드.
+  // 선택 파일의 본문을 지연 로드(텍스트=markdown, 이진=objectUrl 중 하나라도 없으면 로드).
   useEffect(() => {
-    if (file && file.markdown == null) void loadFileContent(file.id)
-  }, [file?.id, file?.markdown])
+    if (file && file.markdown == null && file.objectUrl == null) void loadFileContent(file.id)
+  }, [file?.id, file?.markdown, file?.objectUrl])
 
   if (!file) {
     return (
@@ -76,7 +77,9 @@ export function DocView() {
         </div>
       )}
 
-      {editing ? (
+      {file.format !== 'md' ? (
+        <NonMarkdownView file={file} />
+      ) : editing ? (
         file.markdown == null ? (
           <div style={{ fontSize: 14, color: color.textFaint, fontStyle: 'italic' }}>
             본문을 불러오는 중…

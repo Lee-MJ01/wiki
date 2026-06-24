@@ -4,7 +4,11 @@
  */
 import { useStore } from '../app/store'
 import { DriveSource } from './DriveSource'
-import { FileSystemSource } from './FileSystemSource'
+import { FileSystemSource, handlePermission } from './FileSystemSource'
+import { requestToken } from './googleAuth'
+import { loadVaultHandle } from './handleStore'
+import { getLastSourceKind, setLastSourceKind } from './session'
+import { isBinaryFormat, mimeForExt } from './fileFormat'
 import { buildNoteFromMarkdown, resolveTargetIn } from '../markdown/parse'
 import type { DataSource, SourceKind } from './types'
 
@@ -18,17 +22,17 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-/** 소스 선택 + 연결 + 목록 로드. */
-export async function connectSource(kind: SourceKind): Promise<void> {
+/** 연결된 소스를 활성화하고 목록·링크·자동동기화를 켠다(신규 연결·세션 복원 공통). */
+async function activate(source: DataSource, kind: SourceKind): Promise<void> {
   const st = useStore.getState()
-  const source = makeSource(kind)
   st.setError(null)
   st.setRefreshing(true)
   try {
-    await source.connect()
     active = source
     st.setSourceKind(kind)
     st.setConnected(true)
+    st.setRestorable(null)
+    setLastSourceKind(kind) // 새로고침 후 복원용으로 종류 기억.
     const files = await source.list()
     st.setFiles(files)
     st.setLastSyncedAt(Date.now())
@@ -42,6 +46,69 @@ export async function connectSource(kind: SourceKind): Promise<void> {
   } finally {
     st.setRefreshing(false)
   }
+}
+
+/** 소스 선택 + 연결(폴더 선택창/로그인) + 목록 로드. 다시 선택·소스 전환도 이 함수로. */
+export async function connectSource(kind: SourceKind): Promise<void> {
+  const source = makeSource(kind)
+  try {
+    await source.connect() // 사용자 제스처 필요(폴더 선택창/OAuth 팝업).
+  } catch (e) {
+    useStore.getState().setError(message(e))
+    return
+  }
+  await activate(source, kind)
+}
+
+/**
+ * 새로고침 후 마지막 볼트를 자동 복원한다(앱 시작 시 1회).
+ * 로컬: IndexedDB에 저장된 폴더 핸들을 꺼내 권한이 살아있으면 무클릭 복원,
+ *       아니면 store.restorable을 세팅해 "이전 볼트 다시 열기" 버튼을 띄운다.
+ * Drive: 무팝업 토큰 재발급을 시도하고, 실패하면 재로그인 버튼을 띄운다.
+ */
+export async function restoreSession(): Promise<void> {
+  const kind = getLastSourceKind()
+  if (!kind) return
+  if (kind === 'local') {
+    const handle = await loadVaultHandle<{ name?: string }>()
+    if (!handle) return
+    const perm = await handlePermission(handle, false)
+    if (perm === 'granted') {
+      const src = new FileSystemSource()
+      src.adopt(handle)
+      await activate(src, 'local')
+    } else if (perm === 'prompt') {
+      useStore.getState().setRestorable({ kind: 'local', label: handle.name ?? '이전 볼트' })
+    }
+    return
+  }
+  // drive
+  try {
+    await requestToken(false) // 조용히 토큰 재발급(세션이 살아있으면 성공).
+    await activate(new DriveSource(), 'drive')
+  } catch {
+    useStore.getState().setRestorable({ kind: 'drive', label: 'Google Drive' })
+  }
+}
+
+/** "이전 볼트 다시 열기" 버튼 핸들러 — 사용자 제스처에서 권한 재요청/재로그인. */
+export async function reopenVault(): Promise<void> {
+  const r = useStore.getState().restorable
+  if (!r) return
+  if (r.kind === 'local') {
+    const handle = await loadVaultHandle()
+    if (!handle) return connectSource('local')
+    const perm = await handlePermission(handle, true)
+    if (perm === 'granted') {
+      const src = new FileSystemSource()
+      src.adopt(handle)
+      await activate(src, 'local')
+    } else {
+      await connectSource('local') // 거부되면 새로 선택.
+    }
+    return
+  }
+  await connectSource('drive')
 }
 
 /** 수동 새로고침(연결된 소스에서 목록 재로드). */
@@ -77,7 +144,8 @@ export async function loadAllLinks(): Promise<void> {
     const ids = useStore.getState().files.map((f) => f.id)
     for (const id of ids) {
       const cur = useStore.getState().files.find((f) => f.id === id)
-      if (!cur || cur.markdown != null) continue
+      // 링크/요약/블록은 마크다운만 대상(html·txt·이미지·pdf는 제외).
+      if (!cur || cur.format !== 'md' || cur.markdown != null) continue
       try {
         const full = await active.read(id)
         useStore.getState().upsertFile(full)
@@ -91,13 +159,24 @@ export async function loadAllLinks(): Promise<void> {
   }
 }
 
-/** 선택 문서의 본문을 지연 로드(이미 로드됐으면 무시). */
+/**
+ * 선택 파일의 본문을 지연 로드(이미 로드됐으면 무시).
+ * 텍스트(md/html/txt)는 read()로, 이진(image/pdf)은 readBlob()로 object URL을 만든다.
+ */
 export async function loadFileContent(id: string): Promise<void> {
   if (!active) return
   const st = useStore.getState()
   const existing = st.files.find((f) => f.id === id)
-  if (existing && existing.markdown != null) return
+  if (!existing) return
   try {
+    if (isBinaryFormat(existing.format)) {
+      if (existing.objectUrl) return
+      const blob = await active.readBlob(id)
+      const typed = blob.type ? blob : new Blob([blob], { type: mimeForExt(existing.ext) })
+      st.upsertFile({ ...existing, objectUrl: URL.createObjectURL(typed) })
+      return
+    }
+    if (existing.markdown != null) return
     const full = await active.read(id)
     st.upsertFile(full)
   } catch (e) {
@@ -188,15 +267,15 @@ export async function saveFile(id: string, markdown: string): Promise<void> {
   }
 }
 
-/** 새 파일 생성 후 선택 + 편집 모드로 연다. 빈 제목은 무시. */
-export async function createFile(folder: string, title: string): Promise<void> {
+/** 새 파일(.md) 생성 후 선택 + 편집 모드로 연다. folderPath는 볼트 루트 기준 폴더 경로(루트는 ''). 빈 제목은 무시. */
+export async function createFile(folderPath: string, title: string): Promise<void> {
   if (!active) return
   const name = title.trim()
   if (!name) return
   const st = useStore.getState()
   st.setError(null)
   try {
-    const note = await active.create(folder, name)
+    const note = await active.create(folderPath, name)
     st.upsertFile(note)
     st.open(note.id)
     if (!useStore.getState().editing) useStore.getState().toggleEdit()

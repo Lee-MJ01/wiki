@@ -5,6 +5,12 @@ export function stripMdExt(name: string): string {
   return name.replace(/\.md$/i, '')
 }
 
+/** 마지막 확장자 1개 제거 → 표시 제목(모든 형식 공통). 점으로 시작하는 이름은 그대로. */
+export function stripExt(name: string): string {
+  const dot = name.lastIndexOf('.')
+  return dot > 0 ? name.slice(0, dot) : name
+}
+
 /** epoch ms → "방금 / N분 전 / N시간 전 / 어제 / N일 전 / YYYY-MM-DD". */
 export function formatRelativeMs(ms: number): string {
   if (Number.isNaN(ms)) return ''

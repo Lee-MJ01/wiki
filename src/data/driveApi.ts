@@ -74,6 +74,18 @@ export async function getFileText(token: string, id: string): Promise<string> {
   return res.text()
 }
 
+/** 파일 본문을 Blob으로 다운로드(이미지·pdf 미리보기용). */
+export async function getFileBlob(token: string, id: string): Promise<Blob> {
+  const res = await fetch(`${DRIVE}/files/${id}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Drive 다운로드 ${res.status}: ${body.slice(0, 200)}`)
+  }
+  return res.blob()
+}
+
 /** 마크다운 파일 생성(메타 + 본문 multipart 1회). 생성된 DriveItem 반환. */
 export async function createMarkdownFile(
   token: string,
