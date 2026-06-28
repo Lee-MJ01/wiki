@@ -46,6 +46,8 @@ export interface NoteFile {
   title: string
   /** 표시용 상대시각 라벨("2분 전") 또는 ISO 문자열. */
   updatedAt: string
+  /** 정렬용 원본 수정시각(epoch ms). 알 수 없으면 0. "최근 작업" 정렬에 사용. */
+  updatedMs: number
   tags: string[]
   /** 이 문서가 참조하는 파일 id들(위키링크/링크에서 추출). md만 해당. */
   links: string[]

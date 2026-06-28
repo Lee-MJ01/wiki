@@ -3,12 +3,17 @@ import { useStore } from '../app/store'
 import { ConnectButton } from '../components/ConnectButton'
 import { NoteCard } from '../components/NoteCard'
 
+/** "최근 작업" 화면에 보여줄 최대 카드 수. */
+const RECENT_LIMIT = 20
+
 /**
- * 볼트 대시보드(README §5.3). Phase 0에서는 빈 상태.
- * Phase 4에서 store.files → 카드 그리드로 채운다.
+ * 최근 작업 화면 — 수정시각이 가장 최근인 파일부터 카드 그리드로 표시한다.
+ * 정렬 기준은 NoteFile.updatedMs(원본 수정시각 epoch ms) 내림차순, 상위 RECENT_LIMIT개.
  */
-export function Dashboard() {
+export function RecentView() {
   const files = useStore((s) => s.files)
+
+  const recent = [...files].sort((a, b) => b.updatedMs - a.updatedMs).slice(0, RECENT_LIMIT)
 
   return (
     <div style={{ padding: '30px 34px 60px', maxWidth: 1100, margin: '0 auto' }}>
@@ -21,13 +26,13 @@ export function Dashboard() {
           marginBottom: 4,
         }}
       >
-        볼트 대시보드
+        최근 작업
       </div>
       <div style={{ fontSize: 14, color: color.textSubtle, marginBottom: 26 }}>
-        G드라이브에 정리된 메모를 한눈에. 카드를 눌러 문서로 이동하세요.
+        가장 최근에 수정한 파일부터 차례로 보여줍니다.
       </div>
 
-      {files.length === 0 ? (
+      {recent.length === 0 ? (
         <EmptyState />
       ) : (
         <div
@@ -37,7 +42,7 @@ export function Dashboard() {
             gap: 16,
           }}
         >
-          {files.map((f) => (
+          {recent.map((f) => (
             <NoteCard key={f.id} file={f} />
           ))}
         </div>
@@ -62,7 +67,7 @@ function EmptyState() {
         아직 표시할 메모가 없습니다
       </div>
       <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-        로컬 폴더(G:\ 등)나 Google Drive를 연결하면 볼트의 메모가 카드로 나타납니다.
+        로컬 폴더(G:\ 등)나 Google Drive를 연결하면 최근 수정한 파일이 여기에 나타납니다.
       </div>
       <ConnectButton />
     </div>

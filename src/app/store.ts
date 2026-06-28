@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { NoteFile, SourceKind } from '../data/types'
 
-export type ViewKey = 'dashboard' | 'graph' | 'doc' | 'mindmap' | 'diagram'
+export type ViewKey = 'dashboard' | 'recent' | 'graph' | 'doc' | 'mindmap' | 'diagram'
 
 const COLLAPSE_KEY = 'notelens.collapsedFolders'
 const SIDEBAR_WIDTH_KEY = 'notelens.sidebarWidth'
