@@ -1,5 +1,6 @@
 import { useStore } from '../app/store'
 import { Dashboard } from './Dashboard'
+import { RecentView } from './RecentView'
 import { GraphView } from './GraphView'
 import { DocView } from './DocView'
 import { MindmapView } from './MindmapView'
@@ -11,6 +12,8 @@ export function ViewRouter() {
   switch (view) {
     case 'dashboard':
       return <Dashboard />
+    case 'recent':
+      return <RecentView />
     case 'graph':
       return <GraphView />
     case 'doc':

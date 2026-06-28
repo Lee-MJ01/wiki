@@ -7,6 +7,7 @@ import { ConfirmModal } from '../components/ConfirmModal'
 
 const TABS: [ViewKey, string][] = [
   ['dashboard', '대시보드'],
+  ['recent', '최근 작업'],
   ['graph', '그래프'],
   ['doc', '문서'],
   ['mindmap', '마인드맵'],

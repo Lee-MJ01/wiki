@@ -224,6 +224,7 @@ export class FileSystemSource implements DataSource {
       type: typeForFolder(parentName),
       title: stripExt(fileName),
       updatedAt: formatRelativeMs(lastModified),
+      updatedMs: lastModified,
       tags: [],
       links: [],
       summary: '',
